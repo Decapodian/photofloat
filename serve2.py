@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PhotoFloat modern server — recursive album discovery from config.json sources."""
+"""PhotoFloat modern server — hierarchical album navigation from config.json sources."""
 
 import json
 import os
@@ -18,68 +18,78 @@ def load_config():
     with open(CONFIG_FILE) as f:
         return json.load(f)
 
-# Background thumb generation state
-bg_status = {"running": False, "current": "", "done": 0, "total": 0}
+# --- Directory cache ---
+_dir_cache = {"ts": 0}
+_CACHE_TTL = 30
 
-app = Flask(__name__, static_folder=None)
-
-def is_image(path):
-    return os.path.isfile(path) and os.path.splitext(path)[1].lower() in EXTENSIONS
-
-_album_cache = {"data": [], "files": {}, "ts": 0}
-_CACHE_TTL = 30  # seconds
-
-def discover_albums(force=False):
-    now = time.time()
-    if not force and _album_cache["data"] and (now - _album_cache["ts"]) < _CACHE_TTL:
-        return _album_cache["data"]
+def _resolve_path(album_path):
+    """Resolve an album_path like 'boot/boot1/Nube mg misc' to a real filesystem path."""
     cfg = load_config()
-    albums = []
-    file_map = {}
+    if not album_path:
+        return None
+    parts = album_path.split("/", 1)
+    root_name = parts[0]
     for source in cfg["sources"]:
-        if not os.path.isdir(source):
-            continue
-        for dirpath, dirnames, filenames in os.walk(source):
-            dirnames[:] = [d for d in dirnames if not d.startswith('.')]
-            photos = sorted([f for f in filenames if os.path.splitext(f)[1].lower() in EXTENSIONS])
-            if photos:
-                rel = os.path.relpath(dirpath, source)
-                name = os.path.basename(source) if rel == '.' else rel
-                a = {
-                    "name": name,
-                    "abs_path": dirpath,
-                    "source": source,
-                    "count": len(photos),
-                    "cover_file": random.choice(photos)
-                }
-                albums.append(a)
-                file_map[album_id_for(a)] = photos
-    _album_cache["data"] = albums
-    _album_cache["files"] = file_map
-    _album_cache["ts"] = now
-    return albums
-
-def get_album_files(album_id):
-    discover_albums()
-    return _album_cache["files"].get(album_id, [])
-
-def find_album(album_id):
-    for a in discover_albums():
-        if album_id_for(a) == album_id:
-            return a
+        if os.path.basename(source) == root_name:
+            if len(parts) == 1:
+                return source
+            return os.path.join(source, parts[1])
     return None
 
-def album_id_for(album):
-    rel = os.path.relpath(album["abs_path"], album["source"])
-    base = os.path.basename(album["source"])
-    return base if rel == '.' else base + "/" + rel
+def _list_dir_cached(path):
+    """List directory with caching."""
+    now = time.time()
+    key = path
+    if key in _dir_cache and (now - _dir_cache.get(key + "_ts", 0)) < _CACHE_TTL:
+        return _dir_cache[key]
+    try:
+        entries = os.listdir(path)
+    except OSError:
+        entries = []
+    _dir_cache[key] = entries
+    _dir_cache[key + "_ts"] = now
+    return entries
 
-def thumb_path_for(cache_key, filename):
+def _get_contents(real_path):
+    """Get subfolders and photos in a directory."""
+    entries = _list_dir_cached(real_path)
+    subdirs = []
+    photos = []
+    for e in sorted(entries):
+        if e.startswith('.'):
+            continue
+        full = os.path.join(real_path, e)
+        if os.path.isdir(full):
+            subdirs.append(e)
+        elif os.path.splitext(e)[1].lower() in EXTENSIONS:
+            photos.append(e)
+    return subdirs, photos
+
+def _find_random_photo(real_path, depth=3):
+    """Find a random photo in this dir or subdirs for cover."""
+    if depth <= 0:
+        return None
+    subdirs, photos = _get_contents(real_path)
+    if photos:
+        return os.path.join(real_path, random.choice(photos))
+    for sd in subdirs:
+        result = _find_random_photo(os.path.join(real_path, sd), depth - 1)
+        if result:
+            return result
+    return None
+
+# --- Background generation ---
+bg_status = {"running": False, "current": "", "done": 0, "total": 0}
+
+def _thumb_dir(album_path):
     cfg = load_config()
-    safe_dir = cache_key.replace("/", "_").replace("\\", "_")
-    d = os.path.join(cfg["cache_path"], safe_dir)
+    safe = album_path.replace("/", "_").replace("\\", "_").replace(" ", "_")
+    d = os.path.join(cfg["cache_path"], safe)
     os.makedirs(d, exist_ok=True)
-    return d, os.path.splitext(filename)[0] + "_300.jpg"
+    return d
+
+def _thumb_name(filename):
+    return os.path.splitext(filename)[0] + "_300.jpg"
 
 def generate_thumb(src, dst):
     try:
@@ -95,29 +105,44 @@ def generate_thumb(src, dst):
 def bg_generate_all():
     global bg_status
     bg_status = {"running": True, "current": "", "done": 0, "total": 0}
-    tasks = []
-    for a in discover_albums():
-        aid = album_id_for(a)
-        for f in os.listdir(a["abs_path"]):
-            full = os.path.join(a["abs_path"], f)
-            if not os.path.isfile(full) or os.path.splitext(f)[1].lower() not in EXTENSIONS:
+    try:
+        cfg = load_config()
+        tasks = []
+        for source in cfg["sources"]:
+            if not os.path.isdir(source):
                 continue
-            cache_dir, thumb_name = thumb_path_for(aid, f)
-            if not os.path.exists(os.path.join(cache_dir, thumb_name)):
-                tasks.append((full, os.path.join(cache_dir, thumb_name), f))
-    bg_status["total"] = len(tasks)
-    for src, dst, name in tasks:
-        bg_status["current"] = name
-        generate_thumb(src, dst)
-        bg_status["done"] += 1
-    bg_status["current"] = ""
-    bg_status["running"] = False
+            base = os.path.basename(source)
+            for dirpath, dirnames, filenames in os.walk(source):
+                dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+                rel = os.path.relpath(dirpath, source)
+                album_path = base if rel == '.' else base + "/" + rel
+                td = _thumb_dir(album_path)
+                for f in filenames:
+                    if os.path.splitext(f)[1].lower() not in EXTENSIONS:
+                        continue
+                    tn = _thumb_name(f)
+                    if not os.path.exists(os.path.join(td, tn)):
+                        tasks.append((os.path.join(dirpath, f), os.path.join(td, tn), f))
+        bg_status["total"] = len(tasks)
+        print(f"[bg] {len(tasks)} thumbs to generate")
+        for src, dst, name in tasks:
+            bg_status["current"] = name
+            generate_thumb(src, dst)
+            bg_status["done"] += 1
+    except Exception as e:
+        print(f"[bg error] {e}")
+    finally:
+        bg_status["current"] = ""
+        bg_status["running"] = False
+        _status_cache["data"] = None
+        print("[bg] done")
 
 def start_bg_generation():
     if not bg_status["running"]:
         threading.Thread(target=bg_generate_all, daemon=True).start()
 
-# --- Routes ---
+# --- Flask app ---
+app = Flask(__name__, static_folder=None)
 
 @app.route("/")
 def index():
@@ -127,92 +152,158 @@ def index():
 def static_files(path):
     return send_from_directory(os.path.join(WEB_PATH, "static"), path)
 
-@app.route("/api/albums")
-def api_albums():
-    result = []
-    for a in discover_albums():
-        aid = album_id_for(a)
-        result.append({
-            "id": aid, "name": a["name"], "count": a["count"],
-            "cover": f"/api/thumb/{aid}/{a['cover_file']}"
+@app.route("/api/browse")
+@app.route("/api/browse/<path:album_path>")
+def api_browse(album_path=""):
+    """Browse a directory: returns subalbums + photos."""
+    cfg = load_config()
+
+    if not album_path:
+        # Root: show sources as top-level albums
+        items = []
+        for source in cfg["sources"]:
+            if not os.path.isdir(source):
+                continue
+            name = os.path.basename(source)
+            cover_file = _find_random_photo(source)
+            cover = f"/api/cover?path={cover_file}" if cover_file else ""
+            items.append({"name": name, "id": name, "type": "album", "cover": cover})
+        return jsonify({"path": "", "albums": items, "photos": []})
+
+    real_path = _resolve_path(album_path)
+    if not real_path or not os.path.isdir(real_path):
+        abort(404)
+
+    subdirs, photos = _get_contents(real_path)
+
+    albums = []
+    for sd in subdirs:
+        sub_id = album_path + "/" + sd
+        cover_file = _find_random_photo(os.path.join(real_path, sd))
+        cover = f"/api/cover?path={cover_file}" if cover_file else ""
+        albums.append({"name": sd, "id": sub_id, "type": "album", "cover": cover})
+
+    photo_list = []
+    for f in photos:
+        full = os.path.join(real_path, f)
+        mtime = os.path.getmtime(full)
+        size = os.path.getsize(full)
+        photo_list.append({
+            "name": f,
+            "thumb": f"/api/thumb/{album_path}/{f}",
+            "full": f"/api/photo/{album_path}/{f}",
+            "date": mtime,
+            "size": size
         })
-    return jsonify(result)
 
-@app.route("/api/photos/<path:album_id>")
-def api_photos(album_id):
-    album = find_album(album_id)
-    if not album:
-        abort(404)
-    files = get_album_files(album_id)
-    photos = [{"name": f, "thumb": f"/api/thumb/{album_id}/{f}", "full": f"/api/photo/{album_id}/{f}"} for f in files]
-    return jsonify(photos)
+    return jsonify({"path": album_path, "albums": albums, "photos": photo_list})
 
-@app.route("/api/photo/<path:album_id>/<filename>")
-def api_photo(album_id, filename):
-    album = find_album(album_id)
-    if not album:
+@app.route("/api/cover")
+def api_cover():
+    """Serve a cover thumbnail from absolute path."""
+    path = os.path.abspath(os.path.normpath(os.path.expanduser(
+        __import__('flask').request.args.get('path', ''))))
+    # security: only serve from configured sources
+    cfg = load_config()
+    allowed = False
+    for source in cfg["sources"]:
+        if path.startswith(os.path.abspath(source)):
+            allowed = True
+            break
+    if not allowed or not os.path.isfile(path):
         abort(404)
-    return send_from_directory(album["abs_path"], filename)
+    # generate thumb on the fly
+    cfg = load_config()
+    cover_cache = os.path.join(cfg["cache_path"], "_covers")
+    os.makedirs(cover_cache, exist_ok=True)
+    thumb = os.path.join(cover_cache, str(hash(path)) + ".jpg")
+    if not os.path.exists(thumb):
+        generate_thumb(path, thumb)
+    return send_from_directory(cover_cache, os.path.basename(thumb))
 
-@app.route("/api/thumb/<path:album_id>/<filename>")
-def api_thumb(album_id, filename):
-    album = find_album(album_id)
-    if not album:
+@app.route("/api/photo/<path:album_path>/<filename>")
+def api_photo(album_path, filename):
+    real_path = _resolve_path(album_path)
+    if not real_path:
         abort(404)
-    cache_dir, thumb_name = thumb_path_for(album_id, filename)
-    thumb_full = os.path.join(cache_dir, thumb_name)
-    if not os.path.exists(thumb_full):
-        original = os.path.join(album["abs_path"], filename)
+    return send_from_directory(real_path, filename)
+
+@app.route("/api/thumb/<path:album_path>/<filename>")
+def api_thumb(album_path, filename):
+    real_path = _resolve_path(album_path)
+    if not real_path:
+        abort(404)
+    td = _thumb_dir(album_path)
+    tn = _thumb_name(filename)
+    full = os.path.join(td, tn)
+    if not os.path.exists(full):
+        original = os.path.join(real_path, filename)
         if not os.path.isfile(original):
             abort(404)
-        generate_thumb(original, thumb_full)
-    return send_from_directory(cache_dir, thumb_name)
+        generate_thumb(original, full)
+    return send_from_directory(td, tn)
+
+_status_cache = {"data": None, "ts": 0}
 
 @app.route("/api/status")
 def api_status():
+    now = time.time()
+    if _status_cache["data"] and (now - _status_cache["ts"]) < 10:
+        return jsonify({"albums": _status_cache["data"], "bg": bg_status})
+    cfg = load_config()
     result = []
-    for a in discover_albums():
-        aid = album_id_for(a)
-        cache_dir, _ = thumb_path_for(aid, "dummy")
-        generated = len([f for f in os.listdir(cache_dir) if f.endswith('.jpg')]) if os.path.isdir(cache_dir) else 0
-        result.append({"id": aid, "name": a["name"], "path": a["abs_path"], "photos": a["count"], "thumbs": generated})
+    for source in cfg["sources"]:
+        if not os.path.isdir(source):
+            continue
+        base = os.path.basename(source)
+        for dirpath, dirnames, filenames in os.walk(source):
+            dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+            photos = [f for f in filenames if os.path.splitext(f)[1].lower() in EXTENSIONS]
+            if not photos:
+                continue
+            rel = os.path.relpath(dirpath, source)
+            album_path = base if rel == '.' else base + "/" + rel
+            td = _thumb_dir(album_path)
+            generated = len([f for f in os.listdir(td) if f.endswith('.jpg')]) if os.path.isdir(td) else 0
+            result.append({"name": album_path, "path": dirpath, "photos": len(photos), "thumbs": generated})
+    _status_cache["data"] = result
+    _status_cache["ts"] = now
     return jsonify({"albums": result, "bg": bg_status})
 
 @app.route("/api/generate")
 def api_generate():
+    _status_cache["data"] = None
+    _status_cache["ts"] = 0
     start_bg_generation()
     return jsonify({"started": True})
 
 @app.route("/api/cleanup")
 def api_cleanup():
-    """Remove orphan thumbs for deleted photos."""
-    removed = 0
-    for a in discover_albums(force=True):
-        aid = album_id_for(a)
-        cache_dir, _ = thumb_path_for(aid, "dummy")
-        if not os.path.isdir(cache_dir):
-            continue
-        real_files = set(os.path.splitext(f)[0] for f in os.listdir(a["abs_path"])
-                        if os.path.splitext(f)[1].lower() in EXTENSIONS)
-        for thumb in os.listdir(cache_dir):
-            base = thumb.rsplit("_300", 1)[0]
-            if base not in real_files:
-                os.unlink(os.path.join(cache_dir, thumb))
-                removed += 1
-    # also clean empty cache dirs
     cfg = load_config()
-    for d in os.listdir(cfg["cache_path"]):
-        full = os.path.join(cfg["cache_path"], d)
-        if os.path.isdir(full) and not os.listdir(full):
-            os.rmdir(full)
+    removed = 0
+    for source in cfg["sources"]:
+        if not os.path.isdir(source):
+            continue
+        base = os.path.basename(source)
+        for dirpath, dirnames, filenames in os.walk(source):
+            dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+            rel = os.path.relpath(dirpath, source)
+            album_path = base if rel == '.' else base + "/" + rel
+            td = _thumb_dir(album_path)
+            if not os.path.isdir(td):
+                continue
+            real_files = set(os.path.splitext(f)[0] for f in filenames
+                            if os.path.splitext(f)[1].lower() in EXTENSIONS)
+            for thumb in os.listdir(td):
+                b = thumb.rsplit("_300", 1)[0]
+                if b not in real_files:
+                    os.unlink(os.path.join(td, thumb))
+                    removed += 1
     return jsonify({"removed": removed})
 
 if __name__ == "__main__":
     cfg = load_config()
-    albums = discover_albums()
-    print(f"Found {len(albums)} albums:")
-    for a in albums:
-        print(f"  {album_id_for(a):30s} ({a['count']} photos) -> {a['abs_path']}")
+    print(f"Sources: {cfg['sources']}")
     start_bg_generation()
-    print(f"\nOpen http://localhost:{cfg.get('port', 5000)}")
+    print(f"Open http://localhost:{cfg.get('port', 5000)}")
     app.run(host="0.0.0.0", port=cfg.get("port", 5000), debug=True, use_reloader=False)

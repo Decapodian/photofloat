@@ -1,4 +1,4 @@
-let currentAlbum = null;
+let currentPath = "";
 let currentPhotos = [];
 let currentIndex = 0;
 
@@ -6,55 +6,94 @@ function escapeHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;');
 }
 
-async function showAlbums() {
-  currentAlbum = null;
-  document.getElementById('breadcrumb').innerHTML = '';
-  document.getElementById('photos-view').style.display = 'none';
-  const view = document.getElementById('albums-view');
-  view.style.display = '';
-  view.innerHTML = '<div style="color:#666">Loading...</div>';
-
-  const res = await fetch('/api/albums');
-  const albums = await res.json();
-
-  if (!albums.length) {
-    view.innerHTML = '<div style="color:#666;grid-column:1/-1">No albums found. Check config.json paths.</div>';
-    return;
-  }
-
-  view.innerHTML = '';
-  albums.forEach(a => {
-    const card = document.createElement('div');
-    card.className = 'album-card';
-    card.onclick = () => showPhotos(a.id, a.name);
-
-    const img = document.createElement('img');
-    img.src = a.cover;
-    img.alt = a.name;
-    img.loading = 'lazy';
-    img.onerror = () => { img.style.display = 'none'; };
-
-    const label = document.createElement('div');
-    label.className = 'label';
-    label.innerHTML = escapeHtml(a.name) + '<br><span class="count">' + a.count + ' photos</span>';
-
-    card.appendChild(img);
-    card.appendChild(label);
-    view.appendChild(card);
+function buildBreadcrumb(path) {
+  const bc = document.getElementById('breadcrumb');
+  if (!path) { bc.innerHTML = ''; return; }
+  const parts = path.split('/');
+  let html = '<a href="#" onclick="browse(\'\'); return false;">Home</a>';
+  let accumulated = '';
+  parts.forEach((p, i) => {
+    accumulated += (i ? '/' : '') + p;
+    const link = accumulated;
+    if (i < parts.length - 1) {
+      html += ' / <a href="#" onclick="browse(\'' + escapeHtml(link) + '\'); return false;">' + escapeHtml(p) + '</a>';
+    } else {
+      html += ' / ' + escapeHtml(p);
+    }
   });
+  bc.innerHTML = html;
 }
 
-async function showPhotos(albumId, albumName) {
-  currentAlbum = albumId;
-  document.getElementById('breadcrumb').innerHTML = '<a href="#" onclick="showAlbums(); return false;">Albums</a> / ' + escapeHtml(albumName || albumId);
-  document.getElementById('albums-view').style.display = 'none';
+async function browse(path) {
+  currentPath = path;
+  buildBreadcrumb(path);
+
+  const albumsView = document.getElementById('albums-view');
+  const photosView = document.getElementById('photos-view');
+  albumsView.style.display = '';
+  albumsView.innerHTML = '<div style="color:#666">Loading...</div>';
+  photosView.style.display = 'none';
+  photosView.innerHTML = '';
+
+  const url = path ? '/api/browse/' + encodeURI(path) : '/api/browse';
+  const res = await fetch(url);
+  const data = await res.json();
+
+  // Render subalbums
+  albumsView.innerHTML = '';
+  if (data.albums.length) {
+    data.albums.forEach(a => {
+      const card = document.createElement('div');
+      card.className = 'album-card';
+      card.onclick = () => browse(a.id);
+
+      const img = document.createElement('img');
+      img.src = a.cover || '';
+      img.alt = a.name;
+      img.loading = 'lazy';
+      img.onerror = () => { img.style.display = 'none'; };
+
+      const label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = a.name;
+
+      card.appendChild(img);
+      card.appendChild(label);
+      albumsView.appendChild(card);
+    });
+  }
+
+  // Render photos
+  if (data.photos.length) {
+    photosView.style.display = '';
+    currentPhotos = data.photos;
+    document.getElementById('sort-select').style.display = '';
+    applySort();
+  } else {
+    document.getElementById('sort-select').style.display = 'none';
+  }
+
+  if (!data.albums.length && !data.photos.length) {
+    albumsView.innerHTML = '<div style="color:#666;grid-column:1/-1">Empty folder</div>';
+  }
+}
+
+function applySort() {
+  const val = document.getElementById('sort-select').value;
+  const [field, dir] = val.split('-');
+  const sorted = [...currentPhotos].sort((a, b) => {
+    let va = a[field], vb = b[field];
+    if (field === 'name') { va = va.toLowerCase(); vb = vb.toLowerCase(); }
+    if (va < vb) return dir === 'asc' ? -1 : 1;
+    if (va > vb) return dir === 'asc' ? 1 : -1;
+    return 0;
+  });
+  currentPhotos = sorted;
+  renderPhotos();
+}
+
+function renderPhotos() {
   const view = document.getElementById('photos-view');
-  view.style.display = '';
-  view.innerHTML = '<div style="color:#666">Loading...</div>';
-
-  const res = await fetch('/api/photos/' + encodeURIComponent(albumId));
-  currentPhotos = await res.json();
-
   view.innerHTML = '';
   currentPhotos.forEach((p, i) => {
     const div = document.createElement('div');
@@ -89,8 +128,7 @@ function closeLightbox(e) {
 
 function updateLightbox() {
   const photo = currentPhotos[currentIndex];
-  const img = document.getElementById('lb-img');
-  img.src = photo.full;
+  document.getElementById('lb-img').src = photo.full;
   document.getElementById('lb-caption').textContent = photo.name;
   document.getElementById('lb-counter').textContent = (currentIndex + 1) + ' / ' + currentPhotos.length;
 }
@@ -114,6 +152,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'Escape') closeLightbox();
 });
 
+// Status panel
 let statusInterval = null;
 
 async function toggleStatus() {
@@ -138,17 +177,19 @@ async function triggerCleanup() {
   const data = await res.json();
   alert('Cleaned ' + data.removed + ' orphan thumbnails');
   await refreshStatus();
-  showAlbums();
 }
 
 async function refreshStatus() {
   const panel = document.getElementById('status-panel');
-  const res = await fetch('/api/status');
-  const data = await res.json();
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch('/api/status', { signal: controller.signal });
+    clearTimeout(timeout);
+    const data = await res.json();
   const bg = data.bg;
-  const albums = data.albums;
 
-  let html = '<h2>📊 Albums Status ';
+  let html = '<h2>📊 Status ';
   if (bg.running) {
     html += '<span style="color:#f59e0b;font-size:0.8rem;font-weight:400">⏳ ' + bg.done + '/' + bg.total + ' — ' + escapeHtml(bg.current) + '</span>';
   } else {
@@ -158,7 +199,7 @@ async function refreshStatus() {
   }
   html += '</h2>';
 
-  albums.forEach(a => {
+  data.albums.forEach(a => {
     const pct = a.photos > 0 ? Math.round(a.thumbs / a.photos * 100) : 0;
     const color = pct >= 100 ? '#4ade80' : '#f59e0b';
     html += '<div class="status-row">'
@@ -169,6 +210,10 @@ async function refreshStatus() {
       + '</div>';
   });
   panel.innerHTML = html;
+  } catch(e) {
+    panel.innerHTML = '<h2>📊 Status</h2><div style="color:#666;padding:0.5rem">Loading... (scanning folders)</div>';
+  }
 }
 
-showAlbums();
+// Start
+browse("");

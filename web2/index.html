@@ -9,8 +9,16 @@
 <body>
 
 <header>
-  <h1 id="title"><a href="#" onclick="showAlbums(); return false;">📷 PhotoFloat</a></h1>
+  <h1 id="title"><a href="#" onclick="browse(''); return false;">📷 PhotoFloat</a></h1>
   <div id="breadcrumb"></div>
+  <select id="sort-select" onchange="applySort()" style="display:none">
+    <option value="name-asc">Name A→Z</option>
+    <option value="name-desc">Name Z→A</option>
+    <option value="date-desc">Newest first</option>
+    <option value="date-asc">Oldest first</option>
+    <option value="size-desc">Largest first</option>
+    <option value="size-asc">Smallest first</option>
+  </select>
   <button id="status-btn" onclick="toggleStatus()">⚙ Status</button>
 </header>
 
