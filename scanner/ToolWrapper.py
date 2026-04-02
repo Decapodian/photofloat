@@ -8,7 +8,7 @@ class ToolWrapper(object):
 		for tool in self.wrappers:
 			try:
 				if self.check_output:
-					p = subprocess.check_output((tool,) + args)
+					p = subprocess.check_output((tool,) + args, text=True)
 				else:
 					p = subprocess.call((tool,) + args)
 					if p > 0:

@@ -7,6 +7,7 @@ class ProcessWrapper(object):
 	def __init__(self, process, done):
 		self.process = process
 		self.done = done
+
 	def close(self):
 		self.done()
 		if self.process.returncode is not None:
@@ -14,11 +15,14 @@ class ProcessWrapper(object):
 		self.process.stdout.close()
 		self.process.terminate()
 		self.process.wait()
+
 	def __iter__(self):
 		return self
+
 	def __del__(self):
 		self.close()
-	def next(self):
+
+	def __next__(self):
 		try:
 			data = self.process.stdout.readline()
 		except:
@@ -42,9 +46,8 @@ def send_process(args, pid_file):
 		except:
 			pass
 	if os.path.exists(pid_file):
-		f = open(pid_file, "r")
-		pid = f.read()
-		f.close()
+		with open(pid_file, "r") as f:
+			pid = f.read()
 		if os.path.exists("/proc/%s/status" % pid):
 			return Response("Scanner is already running.\n", mimetype="text/plain")
 	process = subprocess.Popen(args, close_fds=True, stdout=subprocess.PIPE, preexec_fn=setup_proc)

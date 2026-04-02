@@ -25,7 +25,7 @@ def scan_photos():
 @app.route("/auth")
 def login():
 	success = False
-	if current_user.is_authenticated():
+	if current_user.is_authenticated:
 		success = True
 	elif query_is_photo_user(request.form) or query_is_photo_user(request.args):
 		success = login_user(photo_user, remember=True)
@@ -45,19 +45,17 @@ def cache_base(path):
 		path = "root"
 	return path
 
-auth_list = [ ]
+auth_list = []
 def read_auth_list():
 	global auth_list, cwd
-	f = open(os.path.join(cwd, "auth.txt"), "r")
-	paths = [ ]
-	for path in f:
-		path = path.strip()
-		paths.append(path)
-		paths.append(cache_base(path))
-	f.close()
+	with open(os.path.join(cwd, "auth.txt"), "r") as f:
+		paths = []
+		for path in f:
+			path = path.strip()
+			paths.append(path)
+			paths.append(cache_base(path))
 	auth_list = paths
 
-# TODO: Make this run via inotify
 read_auth_list()
 
 def check_permissions(path):
@@ -97,9 +95,8 @@ def accel_redirect(internal, real, relative_name):
 @app.route("/photos")
 @jsonp
 def photos():
-	f = open(os.path.join(app.config["CACHE_PATH"], "all_photos.json"), "r")
-	photos = json.load(f)
-	f.close()
+	with open(os.path.join(app.config["CACHE_PATH"], "all_photos.json"), "r") as f:
+		photos = json.load(f)
 	if not is_authenticated():
 		def allowed(photo):
 			for auth_path in auth_list:

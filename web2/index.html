@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhotoFloat</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <h1 id="title"><a href="#" onclick="showAlbums(); return false;">📷 PhotoFloat</a></h1>
+  <div id="breadcrumb"></div>
+  <button id="status-btn" onclick="toggleStatus()">⚙ Status</button>
+</header>
+
+<main>
+  <div id="status-panel" style="display:none"></div>
+  <div id="albums-view" class="grid"></div>
+  <div id="photos-view" class="grid" style="display:none"></div>
+</main>
+
+<!-- Lightbox -->
+<div id="lightbox" class="lightbox" style="display:none" onclick="closeLightbox(event)">
+  <button class="lb-close" onclick="closeLightbox()">&times;</button>
+  <button class="lb-prev" onclick="prevPhoto(event)">&lsaquo;</button>
+  <button class="lb-next" onclick="nextPhoto(event)">&rsaquo;</button>
+  <div class="lb-content">
+    <img id="lb-img" src="" alt="">
+    <div id="lb-caption"></div>
+  </div>
+  <div id="lb-counter"></div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

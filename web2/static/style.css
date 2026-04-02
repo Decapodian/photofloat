@@ -1,0 +1,169 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0a0a0a;
+  color: #e0e0e0;
+  min-height: 100vh;
+}
+
+header {
+  padding: 1.2rem 2rem;
+  background: #111;
+  border-bottom: 1px solid #222;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+header h1 { font-size: 1.3rem; font-weight: 600; }
+header h1 a { color: #fff; text-decoration: none; }
+#breadcrumb { font-size: 0.9rem; color: #888; flex: 1; }
+#breadcrumb a { color: #aaa; text-decoration: none; }
+#breadcrumb a:hover { color: #fff; }
+#status-btn {
+  background: #222; border: 1px solid #333; color: #aaa;
+  padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer;
+  font-size: 0.8rem;
+}
+#status-btn:hover { background: #333; color: #fff; }
+
+#status-panel {
+  background: #141414; border: 1px solid #222; border-radius: 10px;
+  padding: 1.2rem; margin-bottom: 1.5rem;
+}
+#status-panel h2 { font-size: 1rem; margin-bottom: 0.8rem; color: #ccc; }
+.status-row {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0.5rem 0; border-bottom: 1px solid #1a1a1a;
+  font-size: 0.85rem;
+}
+.status-row:last-child { border-bottom: none; }
+.status-name { flex: 1; color: #ddd; }
+.status-path { flex: 2; color: #666; font-size: 0.75rem; font-family: monospace; }
+.status-bar { flex: 1; height: 6px; background: #222; border-radius: 3px; overflow: hidden; }
+.status-bar-fill { height: 100%; background: #4ade80; border-radius: 3px; transition: width 0.3s; }
+.status-count { color: #888; font-size: 0.8rem; min-width: 80px; text-align: right; }
+
+main { padding: 1.5rem; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+/* Album cards */
+.album-card {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  background: #1a1a1a;
+}
+.album-card:hover {
+  transform: scale(1.03);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+}
+.album-card img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.album-card .label {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: 2rem 0.8rem 0.8rem;
+  background: linear-gradient(transparent, rgba(0,0,0,0.85));
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.album-card .count {
+  font-size: 0.75rem;
+  color: #aaa;
+  font-weight: 400;
+}
+
+/* Photo thumbs */
+.photo-thumb {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.15s;
+  background: #1a1a1a;
+}
+.photo-thumb:hover {
+  transform: scale(1.04);
+}
+.photo-thumb img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  transition: opacity 0.3s;
+}
+.photo-thumb img.loading { opacity: 0; }
+.photo-thumb img.loaded { opacity: 1; }
+
+/* Lightbox */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.95);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lb-content {
+  max-width: 95vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+#lb-img {
+  max-width: 95vw;
+  max-height: 85vh;
+  object-fit: contain;
+  border-radius: 4px;
+  user-select: none;
+}
+#lb-caption {
+  margin-top: 0.8rem;
+  font-size: 0.85rem;
+  color: #999;
+}
+#lb-counter {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.8rem;
+  color: #666;
+}
+.lb-close, .lb-prev, .lb-next {
+  position: absolute;
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  font-size: 2.5rem;
+  padding: 1rem;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+  z-index: 101;
+}
+.lb-close:hover, .lb-prev:hover, .lb-next:hover { opacity: 1; }
+.lb-close { top: 0; right: 0.5rem; font-size: 2rem; }
+.lb-prev { left: 0.5rem; top: 50%; transform: translateY(-50%); }
+.lb-next { right: 0.5rem; top: 50%; transform: translateY(-50%); }
+
+@media (max-width: 600px) {
+  .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+  header { padding: 0.8rem 1rem; }
+  main { padding: 0.8rem; }
+}

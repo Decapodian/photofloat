@@ -40,3 +40,4 @@ site.webmanifest
 
 web/cache
 web/albums
+__pycache__/
