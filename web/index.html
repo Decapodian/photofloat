@@ -1,53 +1,45 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-	<meta http-equiv="X-UA-Compatible" content="IE=edge" />
-	<meta name="medium" content="image" />
-	<title>Photos</title>
-	<link href="css/000-controls.css" rel="stylesheet" type="text/css" />
-	<link href="css/001-fonts.css" rel="stylesheet" type="text/css" />
-	<link href="css/002-mobile.css" rel="stylesheet" type="text/css" />
-	<script type="text/javascript" src="js/000-jquery.js"></script>
-	<script type="text/javascript" src="js/001-hashchange.js"></script>
-	<script type="text/javascript" src="js/002-preloadimages.js"></script>
-	<script type="text/javascript" src="js/003-mousewheel.js"></script>
-	<script type="text/javascript" src="js/004-fullscreen.js"></script>
-	<script type="text/javascript" src="js/005-modernizr.js"></script>
-	<script type="text/javascript" src="js/010-libphotofloat.js"></script>
-	<script type="text/javascript" src="js/011-display.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhotoFloat</title>
+<link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<div id="title">Photos</div>
-<div id="photo-view">
-	<div id="photo-box">
-		<a id="next-photo"><img id="photo" /></a>
-		<div id="photo-bar">
-			<div id="photo-links">
-				<a id="metadata-link" href="javascript:void(0)">show metadata</a> | <a id="original-link" target="_blank">download original</a><span id="fullscreen-divider"> | </span><a id="fullscreen" href="javascript:void(0)">fullscreen</a>
-			</div>
-			<div id="metadata"></div>
-		</div>
-	</div>
-	<div id="video-box">
-		<div id="video-box-inner">
-		</div>
-	</div>
-	
-	<a id="back">&lsaquo;</a>
-	<a id="next">&rsaquo;</a>
-</div>
-<div id="album-view">
-	<div id="thumbs">
-		<div id="loading">Loading...</div>
-	</div>
-	<div id="subalbums"></div>
-	<div id="powered-by">Powered by <a href="http://www.zx2c4.com/projects/photofloat/" target="_blank">PhotoFloat</a></div>
+
+<header>
+  <h1 id="title"><a href="#" onclick="browse(''); return false;">📷 PhotoFloat</a></h1>
+  <div id="breadcrumb"></div>
+  <select id="sort-select" onchange="applySort()" style="display:none">
+    <option value="name-asc">Name A→Z</option>
+    <option value="name-desc">Name Z→A</option>
+    <option value="date-desc">Newest first</option>
+    <option value="date-asc">Oldest first</option>
+    <option value="size-desc">Largest first</option>
+    <option value="size-asc">Smallest first</option>
+  </select>
+  <button id="status-btn" onclick="toggleStatus()">⚙ Status</button>
+</header>
+
+<main>
+  <div id="status-panel" style="display:none"></div>
+  <div id="albums-view" class="grid"></div>
+  <div id="photos-view" class="grid" style="display:none"></div>
+</main>
+
+<!-- Lightbox -->
+<div id="lightbox" class="lightbox" style="display:none" onclick="closeLightbox(event)">
+  <button class="lb-close" onclick="closeLightbox()">&times;</button>
+  <button class="lb-prev" onclick="prevPhoto(event)">&lsaquo;</button>
+  <button class="lb-next" onclick="nextPhoto(event)">&rsaquo;</button>
+  <div class="lb-content">
+    <img id="lb-img" src="" alt="">
+    <div id="lb-caption"></div>
+  </div>
+  <div id="lb-counter"></div>
 </div>
 
-<div id="error-overlay"></div>
-<div id="error-text">Forgot my camera.</div>
-<div id="auth-text"><form id="auth-form"><input id="password" type="password" /><input type="submit" value="Login" /></form</div>
-
+<script src="/static/app.js"></script>
 </body>
 </html>
