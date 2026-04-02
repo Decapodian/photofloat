@@ -1,0 +1,8 @@
+{
+    "sources": [
+        "/path/to/your/photos",
+        "/another/photo/folder"
+    ],
+    "cache_path": "/home/youruser/.photofloat/cache",
+    "port": 5000
+}
